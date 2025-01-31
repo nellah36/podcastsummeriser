@@ -3,9 +3,9 @@ import modal
 import json
 import os
 import base64
+import asyncio
 
 def main():
-        
     # Set a background image
     set_png_as_page_bg('content/background_image.jpg')
 
@@ -18,17 +18,16 @@ def main():
 
     # Dropdown box
     st.sidebar.subheader("Available Podcasts Feeds")
-    
+
     # Get the list of available podcasts after updating
     updated_dropdown_list = list(available_podcast_info.keys())
     # Set the selected index to the index of the last podcast
     selected_podcast_index = len(updated_dropdown_list) - 1
-    
+
     selected_podcast = st.sidebar.selectbox("Select Podcast", options=available_podcast_info.keys(),
                                             index=selected_podcast_index)
 
     if selected_podcast:
-
         podcast_info = available_podcast_info[selected_podcast]
 
         # Right section - Newsletter content
@@ -82,7 +81,7 @@ def main():
     url = st.sidebar.text_input("Link to RSS Feed")
 
     process_button = st.sidebar.button(":heavy_check_mark: Process Podcast Feed")
-     
+
     st.sidebar.markdown("**Note**: Processing a 30-minute podcast takes about a minute \
                         due to the 70x faster whisper model called WhisperX used in this project. \
                         Once processing is done, the select box updates instantly, \
@@ -90,17 +89,16 @@ def main():
                         )
 
     if process_button:
-        
         # Call the function to process the URLs and retrieve podcast guest information
         podcast_info = process_podcast_info(url)
-        
-        if podcast_info["podcast_summary"] == "" or \
-           podcast_info["podcast_highlights"] == "":
+
+        if podcast_info.get("podcast_summary", "") == "" or \
+           podcast_info.get("podcast_highlights", "") == "":
             st.error("Error processing RSS URL.\n \
                      Most likely, the podcast episode you are trying to process is quite lengthy. \
                      Currently, we support extracting summaries for podcasts that are shorter than 1 hour. \
                      Please select a different podcast with episodes lasting under an hour.")
-            
+        
         # Update the dropdown with the processed podcast title
         new_podcast_name = get_next_available_name(available_podcast_info)
         available_podcast_info[new_podcast_name] = podcast_info
@@ -110,7 +108,7 @@ def main():
         save_path = os.path.join('content', new_podcast_name)
         with open(save_path, 'w') as json_file:
             json.dump(podcast_info, json_file, indent=4)
-            
+        
         # Clear the previous content by rerendering the main() function
         st.experimental_rerun()
 
@@ -129,10 +127,15 @@ def create_dict_from_json_files(folder_path):
 
     return data_dict
 
-def process_podcast_info(url):
-    f = modal.Function.lookup("podcast-project", "process_podcast")
-    output = f.remote(url, '/tmp/podcast/')
-    return output
+# Updated function to handle asynchronous Modal calls with error handling
+async def process_podcast_info(url):
+    try:
+        f = modal.Function.lookup("podcast-project", "process_podcast")
+        output = await f.remote(url, '/tmp/podcast/')
+        return output
+    except Exception as e:
+        st.error(f"Error occurred while processing podcast: {str(e)}")
+        return {}
 
 def get_next_available_name(existing_podcasts):
     idx = len(existing_podcasts.keys()) + 1
